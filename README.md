@@ -139,14 +139,15 @@ k8s-gpu-monitoring-dev/
 │   ├── tailwind.config.js      # TailwindCSS 4.1設定
 │   ├── nginx.conf              # 本番用Nginx設定
 │   └── Dockerfile              # マルチステージビルド
-├── helm-chart/                  # Helm Chart
-│   ├── Chart.yaml              # チャート定義
-│   ├── values.yaml             # デフォルト設定値
-│   └── templates/              # Kubernetesマニフェスト
-│       ├── _helpers.tpl        # Helmヘルパー
-│       ├── backend/            # バックエンドリソース
-│       ├── frontend/           # フロントエンドリソース
-│       └── ingress.yaml        # Ingress設定
+├── charts/                     # Helm Charts
+│   └── k8s-gpu-monitoring-dev/ # Helm Chart
+│       ├── Chart.yaml          # チャート定義
+│       ├── values.yaml         # デフォルト設定値
+│       └── templates/          # Kubernetesマニフェスト
+│           ├── _helpers.tpl    # Helmヘルパー
+│           ├── backend/        # バックエンドリソース
+│           ├── frontend/       # フロントエンドリソース
+│           └── ingress.yaml    # Ingress設定
 ├── scripts/                    # 運用スクリプト
 │   └── release.sh             # リリースプロセス自動化
 ├── .github/workflows/          # CI/CD

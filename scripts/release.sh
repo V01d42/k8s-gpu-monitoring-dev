@@ -66,28 +66,28 @@ update_files() {
     echo -e "${BLUE}Updating Helm chart files...${NC}"
     
     # Update Chart.yaml
-    sed -i "s/version: .*/version: $version/" ./helm-chart/Chart.yaml
-    sed -i "s/appVersion: .*/appVersion: \"$version\"/" ./helm-chart/Chart.yaml
+    sed -i "s/version: .*/version: $version/" ./charts/k8s-gpu-monitoring-dev/Chart.yaml
+    sed -i "s/appVersion: .*/appVersion: \"$version\"/" ./charts/k8s-gpu-monitoring-dev/Chart.yaml
     
     # Update values.yaml
-    sed -i "s/tag: .*/tag: \"$version\"/g" ./helm-chart/values.yaml
+    sed -i "s/tag: .*/tag: \"$version\"/g" ./charts/k8s-gpu-monitoring-dev/values.yaml
     
     echo -e "${GREEN}Updated files:${NC}"
-    echo "  - helm-chart/Chart.yaml"
-    echo "  - helm-chart/values.yaml"
+    echo "  - charts/k8s-gpu-monitoring-dev/Chart.yaml"
+    echo "  - charts/k8s-gpu-monitoring-dev/values.yaml"
 }
 
 # Show changes and confirm
 show_changes() {
     echo -e "\n${YELLOW}Changes to be committed:${NC}"
-    git diff --color=always ./helm-chart/Chart.yaml ./helm-chart/values.yaml
+    git diff --color=always ./charts/k8s-gpu-monitoring-dev/Chart.yaml ./charts/k8s-gpu-monitoring-dev/values.yaml
     
     echo -e "\n${YELLOW}Do you want to proceed with these changes? (y/N)${NC}"
     read -r response
     if [[ ! "$response" =~ ^[Yy]$ ]]; then
         echo -e "${RED}Release canceled${NC}"
         # Revert changes
-        git checkout -- ./helm-chart/Chart.yaml ./helm-chart/values.yaml
+        git checkout -- ./charts/k8s-gpu-monitoring-dev/Chart.yaml ./charts/k8s-gpu-monitoring-dev/values.yaml
         exit 1
     fi
 }
@@ -97,7 +97,7 @@ commit_and_push() {
     local version=$1
     
     echo -e "${BLUE}Committing changes...${NC}"
-    git add ./helm-chart/Chart.yaml ./helm-chart/values.yaml
+    git add ./charts/k8s-gpu-monitoring-dev/Chart.yaml ./charts/k8s-gpu-monitoring-dev/values.yaml
     git commit -m "chore: release v$version"
     
     echo -e "${BLUE}Creating tag v$version...${NC}"
