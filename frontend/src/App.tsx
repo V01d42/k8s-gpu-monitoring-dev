@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { RefreshCw, AlertCircle, Activity } from 'lucide-react';
 
@@ -12,7 +12,7 @@ function App() {
   const [autoRefresh, setAutoRefresh] = useState(true);
   const queryClient = useQueryClient();
 
-  // GPUメトリクスデータを取得
+  // Fetch GPU metrics data
   const {
     data: gpuData,
     isLoading,
@@ -21,26 +21,26 @@ function App() {
   } = useQuery({
     queryKey: queryKeys.gpuMetrics,
     queryFn: gpuApi.getGPUMetrics,
-    refetchInterval: autoRefresh ? 30000 : false, // 30秒間隔で自動更新
+    refetchInterval: autoRefresh ? 30000 : false, // Auto-refresh every 30 seconds
     retry: 3,
     retryDelay: 1000,
   });
 
-  // ヘルスチェック
+  // Health check
   const { data: healthData } = useQuery({
     queryKey: queryKeys.health,
     queryFn: gpuApi.checkHealth,
-    refetchInterval: 60000, // 1分間隔
+    refetchInterval: 60000, // Every 1 minute
     retry: 1,
   });
 
-  // 手動更新
+  // Manual refresh
   const handleRefresh = () => {
     refetch();
     queryClient.invalidateQueries({ queryKey: queryKeys.gpuMetrics });
   };
 
-  // 統計情報を計算
+  // Calculate statistics
   const stats = gpuData?.data ? {
     totalGPUs: gpuData.data.length,
     activeGPUs: gpuData.data.filter(gpu => gpu.utilization > 5).length,
@@ -51,7 +51,7 @@ function App() {
   return (
     <div className="min-h-screen bg-background">
       <div className="container mx-auto p-6 space-y-6">
-        {/* ヘッダー */}
+        {/* Header section */}
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-3xl font-bold tracking-tight">GPU監視ダッシュボード</h1>
@@ -61,7 +61,7 @@ function App() {
           </div>
           
           <div className="flex items-center space-x-4">
-            {/* ヘルスステータス */}
+            {/* Health status indicator */}
             <div className="flex items-center space-x-2">
               {healthData?.success ? (
                 <div className="flex items-center space-x-2 text-green-600">
@@ -76,7 +76,7 @@ function App() {
               )}
             </div>
 
-            {/* 自動更新トグル */}
+            {/* Auto-refresh toggle */}
             <Button
               variant={autoRefresh ? "default" : "outline"}
               size="sm"
@@ -85,7 +85,7 @@ function App() {
               {autoRefresh ? "自動更新ON" : "自動更新OFF"}
             </Button>
 
-            {/* 手動更新ボタン */}
+            {/* Manual refresh button */}
             <Button
               variant="outline"
               size="sm"
@@ -98,7 +98,7 @@ function App() {
           </div>
         </div>
 
-        {/* 統計カード */}
+        {/* Statistics cards */}
         {stats && (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
             <Card>
@@ -164,7 +164,7 @@ function App() {
           </div>
         )}
 
-        {/* GPUテーブル */}
+        {/* GPU data table */}
         <GPUTable
           data={gpuData?.data || []}
           isLoading={isLoading}

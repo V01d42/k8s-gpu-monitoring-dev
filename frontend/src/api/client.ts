@@ -20,23 +20,23 @@ apiClient.interceptors.response.use(
     console.error('API Error:', error);
     
     if (error.code === 'ECONNABORTED') {
-      throw new Error('リクエストがタイムアウトしました');
+      throw new Error('Request timeout');
     }
     
     if (!error.response) {
-      throw new Error('ネットワークエラーが発生しました');
+      throw new Error('Network error');
     }
     
     const status = error.response.status;
     switch (status) {
       case 404:
-        throw new Error('APIエンドポイントが見つかりません');
+        throw new Error('API endpoint not found');
       case 500:
-        throw new Error('サーバーエラーが発生しました');
+        throw new Error('Server error');
       case 503:
-        throw new Error('サービスが利用できません');
+        throw new Error('Service unavailable');
       default:
-        throw new Error(`HTTPエラー: ${status}`);
+        throw new Error(`HTTP error: ${status}`);
     }
   }
 );

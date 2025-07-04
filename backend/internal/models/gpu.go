@@ -10,6 +10,7 @@ type GPUMetrics struct {
 	Utilization       float64   `json:"utilization"`
 	MemoryUsed        float64   `json:"memory_used"`
 	MemoryTotal       float64   `json:"memory_total"`
+	MemoryFree        float64   `json:"memory_free"`
 	MemoryUtilization float64   `json:"memory_utilization"`
 	Temperature       float64   `json:"temperature"`
 	PowerDraw         float64   `json:"power_draw"`

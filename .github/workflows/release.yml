@@ -1,0 +1,241 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+  packages: write
+  pages: write
+  id-token: write
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+
+jobs:
+  docker:
+    name: Build and Push Docker Images
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        component: [backend, frontend]
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Free up disk space
+        run: |
+          echo "Initial disk usage:"
+          df -h
+          # Remove unnecessary files to free up space
+          sudo rm -rf /usr/share/dotnet
+          sudo rm -rf /usr/local/lib/android
+          sudo rm -rf /opt/ghc
+          sudo rm -rf /opt/hostedtoolcache/CodeQL
+          sudo docker system prune -af
+          echo "After cleanup:"
+          df -h
+
+      - name: Get version from tag
+        id: get_version
+        run: |
+          TAG_NAME=${GITHUB_REF#refs/tags/}
+          VERSION=${TAG_NAME#v}
+          echo "tag_name=$TAG_NAME" >> $GITHUB_OUTPUT
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/${{ matrix.component }}
+          tags: |
+            type=semver,pattern={{version}}
+            type=raw,value=latest
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: ./${{ matrix.component }}
+          file: ./${{ matrix.component }}/Dockerfile
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          platforms: linux/amd64
+          provenance: false
+
+  helm:
+    name: Release Helm Chart
+    runs-on: ubuntu-latest
+    needs: docker
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Configure Git
+        run: |
+          git config user.name "$GITHUB_ACTOR"
+          git config user.email "$GITHUB_ACTOR@users.noreply.github.com"
+
+      - name: Install Helm
+        uses: azure/setup-helm@v4
+        with:
+          version: 'latest'
+
+      - name: Get version from tag
+        id: get_version
+        run: |
+          TAG_NAME=${GITHUB_REF#refs/tags/}
+          VERSION=${TAG_NAME#v}
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+
+      - name: Verify Chart version consistency
+        run: |
+          CHART_VERSION=$(grep "version:" ./helm-chart/Chart.yaml | awk '{print $2}')
+          CHART_APP_VERSION=$(grep "appVersion:" ./helm-chart/Chart.yaml | awk '{print $2}' | tr -d '"')
+          
+          echo "Verifying version consistency..."
+          echo "  Release version: ${{ steps.get_version.outputs.version }}"
+          echo "  Chart version: $CHART_VERSION"
+          echo "  Chart appVersion: $CHART_APP_VERSION"
+          
+          if [ "$CHART_VERSION" != "${{ steps.get_version.outputs.version }}" ] || [ "$CHART_APP_VERSION" != "${{ steps.get_version.outputs.version }}" ]; then
+            echo "ERROR: Version mismatch detected!"
+            echo "Please update Chart.yaml with the correct version before creating the tag."
+            echo "  Chart version should be: ${{ steps.get_version.outputs.version }}"
+            echo "  Chart appVersion should be: ${{ steps.get_version.outputs.version }}"
+            exit 1
+          fi
+          
+          echo "All versions are consistent!"
+
+      - name: Update values.yaml with new image tags
+        run: |
+          # Update backend and frontend image tags in values.yaml
+          sed -i 's/tag: ".*"/tag: "${{ steps.get_version.outputs.version }}"/g' ./helm-chart/values.yaml
+          
+          echo "Updated values.yaml with version ${{ steps.get_version.outputs.version }}"
+          grep -A 3 'image:' ./helm-chart/values.yaml
+
+      - name: Package Helm chart
+        run: |
+          mkdir -p .cr-release-packages
+          helm package helm-chart/ --destination .cr-release-packages
+
+      - name: Upload Helm chart
+        uses: actions/upload-artifact@v3
+        with:
+          name: helm-chart
+          path: .cr-release-packages/
+
+      - name: Configure Pages
+        uses: actions/configure-pages@v4
+
+      - name: Generate index and upload to Pages
+        run: |
+          # Create index.yaml
+          helm repo index .cr-release-packages --url https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}
+          
+          # Copy to gh-pages directory structure
+          mkdir -p gh-pages
+          cp .cr-release-packages/* gh-pages/
+          
+          echo "Generated Helm repository:"
+          ls -la gh-pages/
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: gh-pages
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
+
+  release:
+    name: Create GitHub Release
+    runs-on: ubuntu-latest
+    needs: [docker, helm]
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Get version from tag
+        id: get_version
+        run: |
+          TAG_NAME=${GITHUB_REF#refs/tags/}
+          VERSION=${TAG_NAME#v}
+          echo "tag_name=$TAG_NAME" >> $GITHUB_OUTPUT
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+
+      - name: Create GitHub Release
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: ${{ steps.get_version.outputs.tag_name }}
+          release_name: Release ${{ steps.get_version.outputs.tag_name }}
+          body: |
+            ## GPU Monitoring Dashboard ${{ steps.get_version.outputs.tag_name }}
+
+            ### Installation
+
+            ```bash
+            # Add the Helm repository
+            helm repo add nvidia-gpu-list-exporter https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}
+            helm repo update
+
+            # Install the chart
+            helm install gpu-monitoring nvidia-gpu-list-exporter/k8s-gpu-monitoring-dev \
+              --namespace gpu-monitoring \
+              --create-namespace \
+              --set backend.env.PROMETHEUS_URL=http://prometheus-server:9090 \
+              --set ingress.hosts[0].host=gpu-monitoring.local
+            ```
+
+            ### Upgrade
+
+            ```bash
+            helm upgrade gpu-monitoring nvidia-gpu-list-exporter/k8s-gpu-monitoring-dev \
+              --namespace gpu-monitoring
+            ```
+
+            ### Docker Images
+
+            - Backend: `ghcr.io/${{ github.repository }}/backend:${{ steps.get_version.outputs.version }}`
+            - Frontend: `ghcr.io/${{ github.repository }}/frontend:${{ steps.get_version.outputs.version }}`
+
+            ### Quick Start
+
+            ```bash
+            # Using install script
+            curl -fsSL https://raw.githubusercontent.com/${{ github.repository }}/main/scripts/install.sh -o install.sh
+            chmod +x install.sh
+            ./install.sh -p http://prometheus-server:9090 -d gpu-monitoring.local
+            ```
+
+            ### What's Changed
+
+            - GPU monitoring dashboard for Kubernetes
+            - Real-time GPU metrics visualization
+            - Personal use optimized configuration
+            - Simplified deployment with Helm
+          draft: false
+          prerelease: false 

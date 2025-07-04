@@ -1,17 +1,20 @@
 # Multi-stage build for optimized image size
-FROM golang:1.22-alpine AS builder
+FROM golang:1.24-alpine AS builder
 
 # Set working directory
 WORKDIR /app
 
-# Install dependencies
-COPY go.mod go.sum ./
+# Copy go.mod and go.sum if exists
+COPY go.mod ./
+COPY go.sum* ./
+
+# Download dependencies
 RUN go mod download
 
 # Copy source code
 COPY . .
 
-# Build the application
+# Build the application with Go 1.24
 RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o gpu-monitoring-api cmd/server/main.go
 
 # Runtime stage

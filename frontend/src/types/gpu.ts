@@ -6,6 +6,7 @@ export interface GPUMetrics {
   utilization: number;
   memory_used: number;
   memory_total: number;
+  memory_free: number;
   memory_utilization: number;
   temperature: number;
   power_draw: number;

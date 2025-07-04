@@ -14,8 +14,9 @@ import (
 	"k8s-gpu-monitoring/internal/prometheus"
 )
 
+// main starts the GPU monitoring API server with graceful shutdown support.
 func main() {
-	// 環境変数から設定を読み込み
+	// Load configuration from environment variables
 	prometheusURL := getEnv("PROMETHEUS_URL", "http://localhost:9090")
 	port := getEnv("PORT", "8080")
 
@@ -23,25 +24,25 @@ func main() {
 	log.Printf("Prometheus URL: %s", prometheusURL)
 	log.Printf("Server Port: %s", port)
 
-	// Prometheusクライアントを初期化
+	// Initialize Prometheus client
 	promClient := prometheus.NewClient(prometheusURL)
 
-	// ハンドラーを初期化
+	// Initialize handlers
 	gpuHandler := handlers.NewGPUHandler(promClient)
 
-	// Go 1.22の新しいServeMuxを使用
+	// Use Go 1.22's new ServeMux with method-specific routing
 	mux := http.NewServeMux()
 
-	// ルートを設定
+	// Register API routes
 	mux.HandleFunc("GET /api/health", gpuHandler.HealthCheck)
 	mux.HandleFunc("GET /api/v1/gpu/metrics", gpuHandler.GetGPUMetrics)
 	mux.HandleFunc("GET /api/v1/gpu/nodes", gpuHandler.GetGPUNodes)
 	mux.HandleFunc("GET /api/v1/gpu/utilization", gpuHandler.GetGPUUtilization)
 
-	// 静的ファイルサーバー（フロントエンド用）
+	// Serve static files for frontend
 	mux.Handle("GET /", http.FileServer(http.Dir("./static/")))
 
-	// ミドルウェアを適用
+	// Apply middleware chain
 	handler := middleware.Chain(
 		mux,
 		middleware.Logger,
@@ -49,7 +50,7 @@ func main() {
 		middleware.Recovery,
 	)
 
-	// HTTPサーバーを設定
+	// Configure HTTP server with timeouts
 	server := &http.Server{
 		Addr:         ":" + port,
 		Handler:      handler,
@@ -58,7 +59,7 @@ func main() {
 		IdleTimeout:  120 * time.Second,
 	}
 
-	// サーバーを別ゴルーチンで開始
+	// Start server in a goroutine
 	go func() {
 		log.Printf("Server starting on port %s", port)
 		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
@@ -66,14 +67,14 @@ func main() {
 		}
 	}()
 
-	// Graceful shutdownの設定
+	// Setup graceful shutdown
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 	<-quit
 
 	log.Println("Server shutting down...")
 
-	// 30秒のタイムアウトでサーバーを停止
+	// Shutdown server with timeout
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
@@ -84,7 +85,7 @@ func main() {
 	log.Println("Server exited")
 }
 
-// getEnv gets environment variable with default value
+// getEnv retrieves environment variable value with fallback to default.
 func getEnv(key, defaultValue string) string {
 	if value := os.Getenv(key); value != "" {
 		return value

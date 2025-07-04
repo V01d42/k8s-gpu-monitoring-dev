@@ -6,12 +6,12 @@ import (
 	"time"
 )
 
-// Logger middleware for request logging
+// Logger middleware for request logging with response time and status code.
 func Logger(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		start := time.Now()
 
-		// カスタムResponseWriterでステータスコードをキャプチャ
+		// Wrap ResponseWriter to capture status code
 		wrapped := &responseWriter{ResponseWriter: w, statusCode: http.StatusOK}
 
 		next.ServeHTTP(wrapped, r)
@@ -28,16 +28,16 @@ func Logger(next http.Handler) http.Handler {
 	})
 }
 
-// CORS middleware for handling cross-origin requests
+// CORS allows all origins for development simplicity
 func CORS(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// CORS ヘッダーを設定
+		// Set CORS headers
 		w.Header().Set("Access-Control-Allow-Origin", "*")
 		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
 		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
 		w.Header().Set("Access-Control-Max-Age", "86400")
 
-		// プリフライトリクエストの処理
+		// Handle preflight requests
 		if r.Method == "OPTIONS" {
 			w.WriteHeader(http.StatusOK)
 			return
@@ -47,7 +47,7 @@ func CORS(next http.Handler) http.Handler {
 	})
 }
 
-// Recovery middleware for panic recovery
+// Recovery middleware for panic recovery with error logging.
 func Recovery(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		defer func() {
@@ -61,7 +61,7 @@ func Recovery(next http.Handler) http.Handler {
 	})
 }
 
-// Chain chains multiple middlewares together
+// Chain applies multiple middlewares to a handler in reverse order.
 func Chain(handler http.Handler, middlewares ...func(http.Handler) http.Handler) http.Handler {
 	for i := len(middlewares) - 1; i >= 0; i-- {
 		handler = middlewares[i](handler)
@@ -69,12 +69,13 @@ func Chain(handler http.Handler, middlewares ...func(http.Handler) http.Handler)
 	return handler
 }
 
-// responseWriter wraps http.ResponseWriter to capture status code
+// responseWriter wraps http.ResponseWriter to capture status code.
 type responseWriter struct {
 	http.ResponseWriter
 	statusCode int
 }
 
+// WriteHeader captures the status code before writing the header.
 func (rw *responseWriter) WriteHeader(code int) {
 	rw.statusCode = code
 	rw.ResponseWriter.WriteHeader(code)

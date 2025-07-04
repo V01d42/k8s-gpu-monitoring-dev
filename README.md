@@ -1,33 +1,41 @@
-# 🖥️ K8s GPU Monitoring Dashboard
+# K8s GPU Monitoring Dashboard
 
 Kubernetes上でPrometheusからGPUメトリクスを取得・表示するための統合監視ダッシュボードです。Go製のバックエンドAPIとReact製のフロントエンドで構成されています。
 
 ![GPU Dashboard](https://img.shields.io/badge/Status-Production%20Ready-green)
-![Go](https://img.shields.io/badge/Go-1.22-blue)
-![React](https://img.shields.io/badge/React-18-blue)
-![License](https://img.shields.io/badge/License-MIT-green)
+![Go](https://img.shields.io/badge/Go-1.24-blue)
+![React](https://img.shields.io/badge/React-19-blue)
+![TypeScript](https://img.shields.io/badge/TypeScript-5.7-blue)
+![Vite](https://img.shields.io/badge/Vite-7.0-purple)
 
-## ✨ 特徴
+## 特徴
 
-### 🚀 高性能
-- **Go 1.22**: 最新の標準ライブラリServeMuxを使用
-- **並行処理**: Goroutineによる効率的なPrometheusクエリ
-- **TanStack Table**: 大量データを高速表示
-- **リアルタイム更新**: 30秒間隔での自動データ更新
+### 最新技術スタック
+- **Go 1.24**: 最新の標準ライブラリServeMuxとメソッド指定ルーティングを使用
+- **React 19.1.0**: 最新のReactによる高性能フロントエンド
+- **TypeScript 5.7**: 型安全な開発環境
+- **Vite 7.0**: 超高速ビルドツール
+- **TailwindCSS 4.1**: 最新のユーティリティファーストCSS
 
-### 📊 豊富な監視機能
+### 高性能アーキテクチャ
+- **並行処理**: Goroutineによる効率的なPrometheusクエリの並列実行
+- **TanStack Query**: 高度なデータフェッチング・キャッシング・状態管理
+- **TanStack Table**: 大量データを高速表示する高性能テーブル
+- **リアルタイム更新**: 30秒間隔での自動データ更新と手動更新機能
+
+### 豊富な監視機能
 - **詳細メトリクス**: GPU利用率、メモリ使用量、温度、電力消費
-- **統計ダッシュボード**: 総GPU数、平均利用率、アラート状況
+- **統計ダッシュボード**: 総GPU数、平均利用率、アクティブ率、高温アラート
 - **ビジュアル表示**: プログレスバーと色分けによる直感的な表示
-- **ヘルスモニタリング**: システム全体の健全性監視
+- **ヘルスモニタリング**: システム全体の健全性監視とPromtheus接続状態
 
-### 🎨 モダンUI
-- **レスポンシブデザイン**: デスクトップ・モバイル対応
-- **ダークモード**: 目に優しい表示
-- **アクセシビリティ**: キーボードナビゲーション対応
-- **TypeScript**: 型安全な開発
+### モダンUI/UX
+- **レスポンシブデザイン**: デスクトップ・モバイル完全対応
+- **ダークモード**: 目に優しい表示（デフォルト有効）
+- **アクセシビリティ**: WCAG準拠のキーボードナビゲーション
+- **リアルタイム表示**: ソート機能付きテーブルでの動的データ表示
 
-## 🏗️ アーキテクチャ
+## アーキテクチャ
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
@@ -35,77 +43,149 @@ Kubernetes上でPrometheusからGPUメトリクスを取得・表示するため
 │                                                             │
 │  ┌─────────────┐    ┌──────────────┐    ┌────────────────┐  │
 │  │   Ingress   │    │   Frontend   │    │   Backend      │  │
-│  │ Controller  │    │   (React)    │    │   (Go API)     │  │
-│  │             │───→│              │───→│                │──┼─→ Prometheus
-│  │   nginx/    │    │  TanStack    │    │  ServeMux      │  │
-│  │  traefik    │    │   Table      │    │  + CORS        │  │
+│  │ Controller  │    │  React 19    │    │   Go 1.24     │  │
+│  │             │───→│  TypeScript  │───→│  ServeMux     │──┼─→ Prometheus
+│  │   nginx     │    │  TanStack    │    │  + CORS       │  │
+│  │             │    │  Tailwind    │    │  + Recovery   │  │
 │  └─────────────┘    └──────────────┘    └────────────────┘  │
 │                                                             │
 └─────────────────────────────────────────────────────────────┘
 ```
 
-## 📁 プロジェクト構成
+## クイックスタート
+
+### Helmでのインストール
+
+```bash
+# Helmリポジトリ追加
+helm repo add gpu-monitoring https://v01d42.github.io/k8s-gpu-monitoring-dev
+helm repo update
+
+# 基本インストール
+helm install gpu-monitoring gpu-monitoring/k8s-gpu-monitoring-dev \
+  --namespace gpu-monitoring \
+  --create-namespace \
+  --set backend.env.PROMETHEUS_URL=http://prometheus-server:9090 \
+  --set ingress.hosts[0].host=gpu-monitoring.local
+
+# Ingress IPを確認してhostsファイルに追加
+kubectl get ingress -n gpu-monitoring
+echo "192.168.1.100 gpu-monitoring.local" | sudo tee -a /etc/hosts
+```
+
+### アクセス
+
+#### Web UI
+```bash
+# Ingressアクセス
+http://gpu-monitoring.local
+
+# Port-forwardでローカルアクセス
+kubectl port-forward -n gpu-monitoring svc/gpu-monitoring-frontend 3000:80
+# http://localhost:3000 でアクセス
+```
+
+#### API
+```bash
+# ヘルスチェック
+curl http://gpu-monitoring.local/api/health
+
+# GPUメトリクス取得
+curl http://gpu-monitoring.local/api/v1/gpu/metrics
+
+# GPU利用率のみ取得（軽量）
+curl http://gpu-monitoring.local/api/v1/gpu/utilization
+
+# GPUノード一覧
+curl http://gpu-monitoring.local/api/v1/gpu/nodes
+```
+
+## プロジェクト構成
 
 ```
-k8s-gpu-monitoring/
-├── backend/                    # Go API サーバー
-│   ├── cmd/server/main.go     # メインエントリーポイント
+k8s-gpu-monitoring-dev/
+├── backend/                      # Go 1.24 API サーバー
+│   ├── cmd/server/main.go       # メインエントリーポイント
 │   ├── internal/
-│   │   ├── handlers/          # HTTPハンドラー
-│   │   ├── middleware/        # CORS・ログ等
-│   │   ├── models/           # データモデル
-│   │   └── prometheus/       # Prometheusクライアント
-│   ├── Dockerfile
-│   └── README.md
-├── frontend/                   # React フロントエンド
+│   │   ├── handlers/            # HTTPハンドラー（GPU関連API）
+│   │   │   ├── gpu.go          # メインハンドラー
+│   │   │   └── gpu_test.go     # 単体テスト
+│   │   ├── middleware/          # HTTP ミドルウェア
+│   │   │   └── middleware.go   # CORS・ログ・リカバリ
+│   │   ├── models/             # データモデル定義
+│   │   │   └── gpu.go          # GPU関連構造体
+│   │   └── prometheus/         # Prometheusクライアント
+│   │       └── client.go       # HTTP API クライアント
+│   ├── go.mod                   # Go 1.24 モジュール設定
+│   └── Dockerfile               # マルチステージビルド
+├── frontend/                     # React 19 + TypeScript フロントエンド
 │   ├── src/
-│   │   ├── components/       # Reactコンポーネント
-│   │   ├── api/             # APIクライアント
-│   │   ├── types/           # TypeScript型定義
-│   │   └── lib/             # ユーティリティ
-│   ├── Dockerfile
-│   ├── nginx.conf
-│   └── README.md
-└── helm-chart/                # Helm Chart（予定）
+│   │   ├── components/          # Reactコンポーネント
+│   │   │   ├── GPUTable.tsx    # GPUテーブルコンポーネント
+│   │   │   └── ui/             # 共通UIコンポーネント
+│   │   │       ├── button.tsx  # ボタンコンポーネント
+│   │   │       └── card.tsx    # カードコンポーネント
+│   │   ├── api/                # APIクライアント
+│   │   │   └── client.ts       # Axiosベースクライアント
+│   │   ├── types/              # TypeScript型定義
+│   │   │   └── gpu.ts          # GPU関連型定義
+│   │   ├── lib/                # ユーティリティ
+│   │   │   └── utils.ts        # 共通ユーティリティ関数
+│   │   ├── App.tsx             # メインアプリケーション
+│   │   ├── main.tsx            # エントリーポイント
+│   │   └── index.css           # TailwindCSS設定
+│   ├── package.json            # Node.js依存関係
+│   ├── vite.config.ts          # Vite 7.0設定
+│   ├── tailwind.config.js      # TailwindCSS 4.1設定
+│   ├── nginx.conf              # 本番用Nginx設定
+│   └── Dockerfile              # マルチステージビルド
+├── helm-chart/                  # Helm Chart
+│   ├── Chart.yaml              # チャート定義
+│   ├── values.yaml             # デフォルト設定値
+│   └── templates/              # Kubernetesマニフェスト
+│       ├── _helpers.tpl        # Helmヘルパー
+│       ├── backend/            # バックエンドリソース
+│       ├── frontend/           # フロントエンドリソース
+│       └── ingress.yaml        # Ingress設定
+├── scripts/                    # 運用スクリプト
+│   └── release.sh             # リリースプロセス自動化
+├── .github/workflows/          # CI/CD
+│   └── release.yml            # GitHub Actions ワークフロー
+└── docs/                      # ドキュメント
+    └── DEPLOYMENT.md          # デプロイメントガイド
 ```
 
-## 🚀 クイックスタート
+## 開発環境
 
 ### 前提条件
-- **Go 1.22以上**
-- **Node.js 18以上**
+- **Go 1.24以上**
+- **Node.js 20以上** (mise.tomlでlatestを指定)
 - **Docker & Docker Compose**
-- **Kubernetes Cluster**
-- **Prometheus Server** (NVIDIA GPU メトリクス取得済み)
 
-### 開発環境で実行
+### ローカル開発環境
 
 #### 1. バックエンドAPI
 ```bash
 cd backend
 go mod download
 go run cmd/server/main.go
+# サーバーが http://localhost:8080 で起動
 ```
 
 #### 2. フロントエンド
 ```bash
 cd frontend
-npm install
+npm ci
 npm run dev
+# Vite開発サーバーが http://localhost:3000 で起動
 ```
 
-#### 3. アクセス
-- フロントエンド: http://localhost:3000
-- バックエンドAPI: http://localhost:8080
+#### 3. 開発時のアクセス
+- **フロントエンド**: http://localhost:3000
+- **バックエンドAPI**: http://localhost:8080
+- **APIドキュメント**: http://localhost:8080/api/health
 
-### Docker Composeで実行
-
-```bash
-# docker-compose.yml 作成後
-docker-compose up -d
-```
-
-## 🔧 設定
+## 設定
 
 ### 環境変数
 
@@ -117,140 +197,307 @@ PORT=8080                                     # APIサーバーポート
 
 #### フロントエンド
 ```bash
-VITE_API_URL=http://localhost:8080/api       # APIベースURL
+VITE_API_URL=/api                            # APIベースURL（本番）
+# 開発時は vite.config.ts のプロキシ設定を使用
 ```
 
 ### 必要なPrometheusメトリクス
 
-以下のNVIDIA GPUメトリクスが必要です：
+以下のNVIDIA GPUメトリクス（nvidia-gpu-exporter対応）が必要です：
 
 ```promql
 # GPU利用率
-nvidia_smi_utilization_gpu_ratio
+nvidia_gpu_utilization_percent
 
 # メモリ関連
-nvidia_smi_memory_used_bytes
-nvidia_smi_memory_total_bytes
+nvidia_gpu_used_memory_bytes
+nvidia_gpu_total_memory_bytes
+nvidia_gpu_free_memory_bytes
+nvidia_gpu_memory_utilization_percent
 
-# 温度・電力
-nvidia_smi_temperature_gpu_celsius
-nvidia_smi_power_draw_watts
-nvidia_smi_enforced_power_limit_watts
-
-# GPU情報
-nvidia_smi_gpu_info
+# 温度
+nvidia_gpu_temperature_celsius
 ```
 
-## 📦 本番デプロイ
+## カスタマイズ
 
-### Helm Chart (推奨)
+### Helm設定
 
+#### 基本設定
+```yaml
+# values.yaml
+global:
+  imageRegistry: "ghcr.io/v01d42/k8s-gpu-monitoring-dev"
+
+backend:
+  enabled: true
+  replicas: 1
+  resources:
+    requests:
+      cpu: "250m"
+      memory: "256Mi"
+    limits:
+      cpu: "500m"
+      memory: "512Mi"
+  env:
+    PROMETHEUS_URL: "http://prometheus-server:9090"
+    
+frontend:
+  enabled: true
+  replicas: 1
+  resources:
+    requests:
+      cpu: "100m"
+      memory: "128Mi"
+    limits:
+      cpu: "200m"
+      memory: "256Mi"
+  
+ingress:
+  enabled: true
+  className: "nginx"
+  hosts:
+    - host: gpu-monitoring.local
+      paths:
+        - path: /api
+          pathType: Prefix
+          backend:
+            service: backend
+            port: 8080
+        - path: /
+          pathType: Prefix
+          backend:
+            service: frontend
+            port: 80
+```
+
+#### セキュリティ設定
+```yaml
+backend:
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 1001
+    runAsGroup: 1001
+    capabilities:
+      drop:
+        - ALL
+    readOnlyRootFilesystem: true
+    allowPrivilegeEscalation: false
+
+frontend:
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 101
+    runAsGroup: 101
+    capabilities:
+      drop:
+        - ALL
+    readOnlyRootFilesystem: true
+    allowPrivilegeEscalation: false
+```
+
+## テスト
+
+### バックエンドテスト
 ```bash
-# Helm Chart作成・デプロイ（予定）
-helm install gpu-monitoring ./helm-chart \
-  --set global.domain=gpu-monitoring.example.com \
-  --set prometheus.url=http://prometheus-server:9090
+cd backend
+go test ./internal/handlers/...
+# モックPromtheusクライアントを使用した単体テスト
 ```
 
-### Docker
-
+### フロントエンドテスト
 ```bash
-# バックエンド
-docker build -t gpu-monitoring-backend ./backend
-docker run -p 8080:8080 \
-  -e PROMETHEUS_URL=http://prometheus:9090 \
-  gpu-monitoring-backend
-
-# フロントエンド  
-docker build -t gpu-monitoring-frontend ./frontend
-docker run -p 3000:80 gpu-monitoring-frontend
+cd frontend
+npm run lint          # ESLint
+npm run type-check     # TypeScriptチェック
 ```
 
-## 🔍 API仕様
+### Helmチャートテスト
+```bash
+helm test gpu-monitoring --namespace gpu-monitoring
+```
+
+## API仕様
 
 ### エンドポイント
 
-| Method | Path | 説明 |
-|--------|------|------|
-| GET | `/api/health` | ヘルスチェック |
-| GET | `/api/v1/gpu/metrics` | 全GPUメトリクス |
-| GET | `/api/v1/gpu/nodes` | GPU搭載ノード一覧 |
-| GET | `/api/v1/gpu/utilization` | GPU利用率（軽量） |
+| Method | Path | 説明 | レスポンス |
+|--------|------|------|-----------|
+| GET | `/api/health` | ヘルスチェック・Prometheus接続確認 | `APIResponse` |
+| GET | `/api/v1/gpu/metrics` | 全GPUの詳細メトリクス | `APIResponse<GPUMetrics[]>` |
+| GET | `/api/v1/gpu/nodes` | GPU搭載ノード一覧 | `APIResponse<GPUNode[]>` |
+| GET | `/api/v1/gpu/utilization` | GPU利用率のみ（軽量） | `APIResponse<GPUUtilization[]>` |
 
-### レスポンス形式
+### データ構造
 
-```json
-{
-  "success": true,
-  "data": [...],
-  "message": "Operation completed successfully"
+```typescript
+interface GPUMetrics {
+  node_name: string;
+  gpu_index: number;
+  gpu_name: string;
+  utilization: number;          // GPU利用率 (%)
+  memory_used: number;          // 使用メモリ (GB)
+  memory_total: number;         // 総メモリ (GB)
+  memory_free: number;          // 空きメモリ (GB)
+  memory_utilization: number;   // メモリ利用率 (%)
+  temperature: number;          // 温度 (℃)
+  power_draw: number;          // 電力消費 (W)
+  power_limit: number;         // 電力制限 (W)
+  timestamp: string;           // タイムスタンプ
+}
+
+interface APIResponse<T> {
+  success: boolean;
+  data?: T;
+  message?: string;
+  error?: string;
 }
 ```
 
-## 🧪 テスト
+## 監視・運用
 
+### ヘルスチェック
 ```bash
-# バックエンドテスト
-cd backend && go test ./...
+# Backend API
+kubectl exec -n gpu-monitoring deployment/gpu-monitoring-backend -- \
+  wget -qO- http://localhost:8080/api/health
 
-# フロントエンドテスト
-cd frontend && npm test
+# Frontend
+kubectl exec -n gpu-monitoring deployment/gpu-monitoring-frontend -- \
+  wget -qO- http://localhost:80/health
 ```
 
-## 📈 パフォーマンス
+### ログ確認
+```bash
+# Backend ログ
+kubectl logs -n gpu-monitoring deployment/gpu-monitoring-backend -f
 
-- **バックエンド**: 1000 req/s 対応
-- **フロントエンド**: 初回ロード < 2秒
-- **リアルタイム更新**: 30秒間隔
-- **同時接続**: 100+ クライアント対応
+# Frontend ログ
+kubectl logs -n gpu-monitoring deployment/gpu-monitoring-frontend -f
 
-## 🔒 セキュリティ
+# 全体ログ
+kubectl logs -n gpu-monitoring -l app.kubernetes.io/name=k8s-gpu-monitoring-dev -f
+```
 
-- **CORS設定**: 適切なクロスオリジン設定
-- **入力検証**: バックエンドでの入力バリデーション
-- **セキュリティヘッダー**: Nginxでのセキュリティヘッダー設定
-- **非rootユーザー**: Dockerコンテナでの非特権実行
+### リソース確認
+```bash
+# Pod状態確認
+kubectl get pods -n gpu-monitoring
 
-## 🛠️ 開発
+# リソース使用量確認
+kubectl top pods -n gpu-monitoring
 
-### 新機能の追加
+# 詳細情報
+kubectl describe pods -n gpu-monitoring
+```
 
-1. **バックエンド**: `internal/handlers/` にハンドラー追加
-2. **フロントエンド**: `src/components/` にコンポーネント追加
-3. **API**: `src/api/client.ts` にAPI関数追加
+## アップグレード
 
-### コントリビューション
+### Helmでのアップグレード
+```bash
+# リポジトリ更新
+helm repo update
 
-1. Forkプロジェクト
-2. 機能ブランチ作成 (`git checkout -b feature/amazing-feature`)
-3. 変更をコミット (`git commit -m 'Add some amazing feature'`)
-4. ブランチにプッシュ (`git push origin feature/amazing-feature`)
-5. Pull Request作成
+# アップグレード
+helm upgrade gpu-monitoring gpu-monitoring/k8s-gpu-monitoring-dev \
+  --namespace gpu-monitoring
 
-## 📚 詳細ドキュメント
+# 特定バージョンにアップグレード
+helm upgrade gpu-monitoring gpu-monitoring/k8s-gpu-monitoring-dev \
+  --namespace gpu-monitoring \
+  --version 1.0.1
+```
 
-- [バックエンドAPI](./backend/README.md)
-- [フロントエンド](./frontend/README.md)
-- [Helm Chart](./helm-chart/README.md) (予定)
+### 設定変更アップグレード
+```bash
+# リソース設定変更
+helm upgrade gpu-monitoring gpu-monitoring/k8s-gpu-monitoring-dev \
+  --namespace gpu-monitoring \
+  --set backend.resources.requests.cpu=500m \
+  --set backend.resources.requests.memory=512Mi
+```
 
-## 🐛 トラブルシューティング
+## セキュリティ
+
+- **CORS設定**: 適切なクロスオリジン設定とプリフライトリクエスト処理
+- **入力検証**: バックエンドでの厳密な入力バリデーション
+- **セキュリティヘッダー**: Nginxでの包括的なセキュリティヘッダー設定
+- **非rootユーザー**: 全Dockerコンテナでの非特権実行
+- **読み取り専用ファイルシステム**: セキュリティ強化のためのイミュータブル実行環境
+- **シンプル設計**: Prometheus HTTPクライアントのみ使用（Kubernetes API不要）
+
+## 開発・コントリビューション
+
+### プロジェクト構造の拡張
+
+1. **バックエンド新機能**: `internal/handlers/` にハンドラー追加
+2. **フロントエンド新機能**: `src/components/` にコンポーネント追加
+3. **API拡張**: `src/api/client.ts` にAPI関数追加
+4. **新しい型定義**: `src/types/` にTypeScript型追加
+
+### CI/CDパイプライン
+
+- **自動ビルド**: タグプッシュ時のDockerイメージ自動ビルド
+- **マルチアーキテクチャ対応**: linux/amd64のみ（GPUノード対応）
+- **Helmチャート公開**: GitHub Pagesでの自動公開
+- **リリース自動化**: scripts/release.sh による完全自動化
+
+### リリースプロセス
+
+```bash
+# 新バージョンリリース
+./scripts/release.sh 1.0.1
+# 1. Chart.yamlとvalues.yamlのバージョン更新
+# 2. Git コミット・タグ作成
+# 3. GitHub Actions による自動ビルド・デプロイ
+```
+
+## トラブルシューティング
 
 ### よくある問題
 
-1. **API接続エラー**: Prometheusサーバーの接続確認
-2. **メトリクス未取得**: NVIDIA GPU Exporterの設定確認
-3. **ビルドエラー**: Go/Node.jsバージョン確認
+1. **API接続エラー**: 
+   ```bash
+   kubectl exec -n gpu-monitoring deployment/gpu-monitoring-backend -- \
+     wget -qO- http://prometheus-server:9090/api/v1/query?query=up
+   ```
 
-## 📄 ライセンス
+2. **メトリクス取得エラー**: NVIDIA GPU Exporterの設定確認
+   ```bash
+   kubectl get pods -A | grep nvidia
+   kubectl logs -n monitoring nvidia-gpu-exporter-xxx
+   ```
 
-MIT License - 詳細は [LICENSE](LICENSE) ファイルを参照
+3. **フロントエンド表示エラー**: ブラウザ開発者ツールでAPI通信確認
 
-## 🤝 サポート
+4. **Ingressアクセス不可**: 
+   ```bash
+   kubectl get ingress -n gpu-monitoring
+   # /etc/hostsにドメイン追加確認
+   ```
 
-- **Issues**: [GitHub Issues](https://github.com/your-org/k8s-gpu-monitoring/issues)
-- **Discussions**: [GitHub Discussions](https://github.com/your-org/k8s-gpu-monitoring/discussions)
+### .localドメインの設定
+```bash
+# Ingress Controller のIPを確認
+kubectl get svc -n ingress-nginx ingress-nginx-controller
 
----
+# /etc/hostsに追加 (Linux/Mac)
+echo "192.168.1.100 gpu-monitoring.local" | sudo tee -a /etc/hosts
 
-**作成者**: GPU監視チーム  
-**最終更新**: 2024年 
+# Windows
+# C:\Windows\System32\drivers\etc\hosts に追加
+# 192.168.1.100 gpu-monitoring.local
+```
+
+## アンインストール
+
+```bash
+# アプリケーション削除
+helm uninstall gpu-monitoring --namespace gpu-monitoring
+
+# Namespace削除
+kubectl delete namespace gpu-monitoring
+
+# /etc/hostsエントリ削除
+sudo sed -i '/gpu-monitoring.local/d' /etc/hosts
+```

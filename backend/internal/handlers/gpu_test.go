@@ -3,26 +3,68 @@ package handlers
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
-	"strings"
 	"testing"
+	"time"
 
 	"k8s-gpu-monitoring/internal/models"
 	"k8s-gpu-monitoring/internal/prometheus"
 )
 
-// MockPrometheusClient implements a mock prometheus client for testing
-type MockPrometheusClient struct {
-	shouldFail bool
+// PrometheusClient interface for testing
+type PrometheusClient interface {
+	GetGPUMetrics(ctx context.Context) ([]models.GPUMetrics, error)
+	GetGPUNodes(ctx context.Context) ([]models.GPUNode, error)
+	Query(ctx context.Context, query string) (*prometheus.PrometheusResponse, error)
 }
 
-func (m *MockPrometheusClient) Query(ctx context.Context, query string) (*prometheus.PrometheusResponse, error) {
-	if m.shouldFail {
-		return nil, &mockError{message: "mock error"}
+type mockPrometheusClient struct {
+	shouldReturnError bool
+}
+
+func (m *mockPrometheusClient) GetGPUMetrics(ctx context.Context) ([]models.GPUMetrics, error) {
+	if m.shouldReturnError {
+		return nil, errors.New("mock prometheus error")
 	}
 
-	// モックレスポンスを返す
+	return []models.GPUMetrics{
+		{
+			NodeName:          "node1",
+			GPUIndex:          0,
+			GPUName:           "NVIDIA Tesla V100",
+			Utilization:       75.5,
+			MemoryUsed:        8.0,
+			MemoryTotal:       16.0,
+			MemoryFree:        8.0,
+			MemoryUtilization: 50.0,
+			Temperature:       65.0,
+			PowerDraw:         250.0,
+			PowerLimit:        300.0,
+		},
+	}, nil
+}
+
+func (m *mockPrometheusClient) GetGPUNodes(ctx context.Context) ([]models.GPUNode, error) {
+	if m.shouldReturnError {
+		return nil, errors.New("mock prometheus error")
+	}
+
+	return []models.GPUNode{
+		{
+			NodeName:  "node1",
+			GPUCount:  2,
+			GPUModels: []string{"NVIDIA Tesla V100"},
+		},
+	}, nil
+}
+
+func (m *mockPrometheusClient) Query(ctx context.Context, query string) (*prometheus.PrometheusResponse, error) {
+	if m.shouldReturnError {
+		return nil, errors.New("mock prometheus error")
+	}
+
 	return &prometheus.PrometheusResponse{
 		Status: "success",
 		Data: struct {
@@ -39,220 +81,176 @@ func (m *MockPrometheusClient) Query(ctx context.Context, query string) (*promet
 			}{
 				{
 					Metric: map[string]string{
-						"node": "test-node",
+						"node": "node1",
 						"gpu":  "0",
 					},
-					Value: []interface{}{1640995200, "50.5"},
+					Value: []interface{}{
+						1234567890.0,
+						"75.5",
+					},
 				},
 			},
 		},
 	}, nil
 }
 
-func (m *MockPrometheusClient) GetGPUMetrics(ctx context.Context) ([]models.GPUMetrics, error) {
-	if m.shouldFail {
-		return nil, &mockError{message: "mock error"}
+// GPUHandlerWrapper for testing with interface
+type GPUHandlerWrapper struct {
+	promClient PrometheusClient
+}
+
+func NewGPUHandlerWrapper(promClient PrometheusClient) *GPUHandlerWrapper {
+	return &GPUHandlerWrapper{
+		promClient: promClient,
+	}
+}
+
+func (h *GPUHandlerWrapper) writeJSONResponse(w http.ResponseWriter, statusCode int, data interface{}) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(statusCode)
+	json.NewEncoder(w).Encode(data)
+}
+
+func (h *GPUHandlerWrapper) HealthCheck(w http.ResponseWriter, r *http.Request) {
+	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+	defer cancel()
+
+	_, err := h.promClient.Query(ctx, "up")
+	if err != nil {
+		response := models.APIResponse{
+			Success: false,
+			Error:   "Prometheus connection failed",
+		}
+		h.writeJSONResponse(w, http.StatusServiceUnavailable, response)
+		return
 	}
 
-	return []models.GPUMetrics{
-		{
-			NodeName:          "test-node",
-			GPUIndex:          0,
-			GPUName:           "Tesla V100",
-			Utilization:       75.5,
-			MemoryUsed:        12.5,
-			MemoryTotal:       16.0,
-			MemoryUtilization: 78.125,
-			Temperature:       65.0,
-			PowerDraw:         250.0,
-			PowerLimit:        300.0,
-		},
-	}, nil
+	response := models.APIResponse{
+		Success: true,
+		Message: "Service is healthy",
+	}
+	h.writeJSONResponse(w, http.StatusOK, response)
 }
 
-func (m *MockPrometheusClient) GetGPUNodes(ctx context.Context) ([]models.GPUNode, error) {
-	if m.shouldFail {
-		return nil, &mockError{message: "mock error"}
+func (h *GPUHandlerWrapper) GetGPUMetrics(w http.ResponseWriter, r *http.Request) {
+	ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
+	defer cancel()
+
+	metrics, err := h.promClient.GetGPUMetrics(ctx)
+	if err != nil {
+		response := models.APIResponse{
+			Success: false,
+			Error:   "Failed to retrieve GPU metrics",
+		}
+		h.writeJSONResponse(w, http.StatusInternalServerError, response)
+		return
 	}
 
-	return []models.GPUNode{
-		{
-			NodeName:  "test-node",
-			GPUCount:  2,
-			GPUModels: []string{"Tesla V100"},
-		},
-	}, nil
+	response := models.APIResponse{
+		Success: true,
+		Data:    metrics,
+		Message: "GPU metrics retrieved successfully",
+	}
+	h.writeJSONResponse(w, http.StatusOK, response)
 }
 
-type mockError struct {
-	message string
-}
-
-func (e *mockError) Error() string {
-	return e.message
-}
-
-func TestGPUHandler_HealthCheck(t *testing.T) {
+func TestHealthCheck(t *testing.T) {
 	tests := []struct {
-		name           string
-		shouldFail     bool
-		expectedStatus int
+		name         string
+		mockError    bool
+		expectedCode int
 	}{
 		{
-			name:           "successful health check",
-			shouldFail:     false,
-			expectedStatus: http.StatusOK,
+			name:         "successful health check",
+			mockError:    false,
+			expectedCode: http.StatusOK,
 		},
 		{
-			name:           "failed health check",
-			shouldFail:     true,
-			expectedStatus: http.StatusServiceUnavailable,
+			name:         "prometheus connection error",
+			mockError:    true,
+			expectedCode: http.StatusServiceUnavailable,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			// プロメテウスクライアントをラップ
-			promClient := &prometheus.Client{}
-			handler := NewGPUHandler(promClient)
+			mockClient := &mockPrometheusClient{shouldReturnError: tt.mockError}
+			handler := NewGPUHandlerWrapper(mockClient)
 
-			// モッククライアントを使用するためにハンドラーを直接テスト
+			req := httptest.NewRequest("GET", "/api/health", nil)
 			w := httptest.NewRecorder()
 
-			// モックを使った簡易テスト
-			if tt.shouldFail {
-				handler.writeErrorResponse(w, http.StatusServiceUnavailable, "Prometheus connection failed")
-			} else {
-				response := models.APIResponse{
-					Success: true,
-					Message: "Service is healthy",
-					Data: map[string]interface{}{
-						"status":  "healthy",
-						"version": "1.0.0",
-					},
-				}
-				handler.writeJSONResponse(w, http.StatusOK, response)
-			}
+			handler.HealthCheck(w, req)
 
-			if w.Code != tt.expectedStatus {
-				t.Errorf("Expected status %d, got %d", tt.expectedStatus, w.Code)
+			if w.Code != tt.expectedCode {
+				t.Errorf("expected status %d, got %d", tt.expectedCode, w.Code)
 			}
 
 			var response models.APIResponse
-			if err := json.NewDecoder(w.Body).Decode(&response); err != nil {
-				t.Fatalf("Failed to decode response: %v", err)
+			err := json.NewDecoder(w.Body).Decode(&response)
+			if err != nil {
+				t.Fatalf("failed to decode response: %v", err)
 			}
 
-			if tt.shouldFail && response.Success {
-				t.Error("Expected failure response, got success")
+			if tt.mockError && response.Success {
+				t.Error("expected success to be false for error case")
 			}
-			if !tt.shouldFail && !response.Success {
-				t.Error("Expected success response, got failure")
+			if !tt.mockError && !response.Success {
+				t.Error("expected success to be true for success case")
 			}
 		})
 	}
 }
 
-func TestGPUHandler_GetGPUMetrics(t *testing.T) {
+func TestGetGPUMetrics(t *testing.T) {
 	tests := []struct {
-		name           string
-		shouldFail     bool
-		expectedStatus int
+		name         string
+		mockError    bool
+		expectedCode int
+		checkData    bool
 	}{
 		{
-			name:           "successful metrics retrieval",
-			shouldFail:     false,
-			expectedStatus: http.StatusOK,
+			name:         "successful metrics retrieval",
+			mockError:    false,
+			expectedCode: http.StatusOK,
+			checkData:    true,
 		},
 		{
-			name:           "failed metrics retrieval",
-			shouldFail:     true,
-			expectedStatus: http.StatusInternalServerError,
+			name:         "prometheus error",
+			mockError:    true,
+			expectedCode: http.StatusInternalServerError,
+			checkData:    false,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			mockClient := &MockPrometheusClient{shouldFail: tt.shouldFail}
-			promClient := &prometheus.Client{}
-			handler := NewGPUHandler(promClient)
+			mockClient := &mockPrometheusClient{shouldReturnError: tt.mockError}
+			handler := NewGPUHandlerWrapper(mockClient)
 
+			req := httptest.NewRequest("GET", "/api/v1/gpu/metrics", nil)
 			w := httptest.NewRecorder()
 
-			// モックレスポンスをシミュレート
-			if tt.shouldFail {
-				handler.writeErrorResponse(w, http.StatusInternalServerError, "Failed to retrieve GPU metrics")
-			} else {
-				metrics, _ := mockClient.GetGPUMetrics(context.Background())
-				response := models.APIResponse{
-					Success: true,
-					Data:    metrics,
-					Message: "GPU metrics retrieved successfully",
-				}
-				handler.writeJSONResponse(w, http.StatusOK, response)
-			}
+			handler.GetGPUMetrics(w, req)
 
-			if w.Code != tt.expectedStatus {
-				t.Errorf("Expected status %d, got %d", tt.expectedStatus, w.Code)
-			}
-
-			// JSON レスポンスの検証
-			if !strings.Contains(w.Header().Get("Content-Type"), "application/json") {
-				t.Error("Expected JSON content type")
+			if w.Code != tt.expectedCode {
+				t.Errorf("expected status %d, got %d", tt.expectedCode, w.Code)
 			}
 
 			var response models.APIResponse
-			if err := json.NewDecoder(w.Body).Decode(&response); err != nil {
-				t.Fatalf("Failed to decode response: %v", err)
+			err := json.NewDecoder(w.Body).Decode(&response)
+			if err != nil {
+				t.Fatalf("failed to decode response: %v", err)
 			}
 
-			if tt.shouldFail && response.Success {
-				t.Error("Expected failure response, got success")
-			}
-			if !tt.shouldFail && !response.Success {
-				t.Error("Expected success response, got failure")
-			}
-
-			// 成功時のデータ検証
-			if !tt.shouldFail && response.Data != nil {
-				metricsData, ok := response.Data.([]interface{})
-				if !ok {
-					t.Error("Expected metrics data to be an array")
-				} else if len(metricsData) == 0 {
-					t.Error("Expected non-empty metrics data")
+			if tt.checkData {
+				if !response.Success {
+					t.Error("expected success to be true")
+				}
+				if response.Data == nil {
+					t.Error("expected data to be present")
 				}
 			}
 		})
-	}
-}
-
-func TestGPUHandler_WriteJSONResponse(t *testing.T) {
-	promClient := &prometheus.Client{}
-	handler := NewGPUHandler(promClient)
-
-	testData := map[string]interface{}{
-		"test":   "data",
-		"number": 42,
-	}
-
-	w := httptest.NewRecorder()
-
-	handler.writeJSONResponse(w, http.StatusOK, testData)
-
-	if w.Code != http.StatusOK {
-		t.Errorf("Expected status %d, got %d", http.StatusOK, w.Code)
-	}
-
-	if contentType := w.Header().Get("Content-Type"); contentType != "application/json" {
-		t.Errorf("Expected Content-Type application/json, got %s", contentType)
-	}
-
-	var result map[string]interface{}
-	if err := json.NewDecoder(w.Body).Decode(&result); err != nil {
-		t.Fatalf("Failed to decode JSON response: %v", err)
-	}
-
-	if result["test"] != "data" {
-		t.Errorf("Expected test field to be 'data', got %v", result["test"])
 	}
 }

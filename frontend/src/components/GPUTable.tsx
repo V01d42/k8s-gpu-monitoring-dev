@@ -16,8 +16,6 @@ import {
   formatPercentage, 
   formatBytes, 
   formatTemperature, 
-  formatPower, 
-  formatRelativeTime, 
   getUtilizationColor, 
   getTemperatureColor,
   cn 
@@ -34,7 +32,7 @@ interface GPUTableProps {
 const columnHelper = createColumnHelper<GPUMetrics>();
 
 export function GPUTable({ data, isLoading, error }: GPUTableProps) {
-  const columns = useMemo<ColumnDef<GPUMetrics>[]>(() => [
+  const columns = useMemo<ColumnDef<GPUMetrics, any>[]>(() => [
     columnHelper.accessor('node_name', {
       header: ({ column }) => (
         <Button
@@ -61,7 +59,16 @@ export function GPUTable({ data, isLoading, error }: GPUTableProps) {
     }),
     
     columnHelper.accessor('utilization', {
-      header: '利用率',
+      header: ({ column }) => (
+        <Button
+          variant="ghost"
+          onClick={() => column.toggleSorting(column.getIsSorted() === 'asc')}
+          className="h-auto p-0 font-semibold"
+        >
+          GPU利用率
+          <ArrowUpDown className="ml-2 h-4 w-4" />
+        </Button>
+      ),
       cell: ({ row }) => {
         const utilization = row.getValue('utilization') as number;
         return (
@@ -80,6 +87,76 @@ export function GPUTable({ data, isLoading, error }: GPUTableProps) {
               {formatPercentage(utilization)}
             </span>
           </div>
+        );
+      },
+    }),
+
+    columnHelper.accessor('memory_utilization', {
+      header: ({ column }) => (
+        <Button
+          variant="ghost"
+          onClick={() => column.toggleSorting(column.getIsSorted() === 'asc')}
+          className="h-auto p-0 font-semibold"
+        >
+          メモリ利用率
+          <ArrowUpDown className="ml-2 h-4 w-4" />
+        </Button>
+      ),
+      cell: ({ row }) => {
+        const memoryUtil = row.getValue('memory_utilization') as number;
+        return (
+          <div className="flex items-center space-x-2">
+            <div className="w-16 bg-muted rounded-full h-2">
+              <div
+                className={cn(
+                  "h-2 rounded-full transition-all",
+                  memoryUtil < 50 ? "bg-green-500" :
+                  memoryUtil < 80 ? "bg-yellow-500" : "bg-red-500"
+                )}
+                style={{ width: `${Math.min(memoryUtil, 100)}%` }}
+              />
+            </div>
+            <span className={cn("font-mono text-sm", getUtilizationColor(memoryUtil))}>
+              {formatPercentage(memoryUtil)}
+            </span>
+          </div>
+        );
+      },
+    }),
+
+    columnHelper.accessor('memory_used', {
+      header: 'メモリ使用量',
+      cell: ({ row }) => {
+        const memoryUsed = row.getValue('memory_used') as number;
+        const memoryTotal = row.original.memory_total;
+        return (
+          <div className="text-sm">
+            <div className="font-mono">{formatBytes(memoryUsed * 1024 * 1024 * 1024)}</div>
+            <div className="text-muted-foreground text-xs">
+              / {formatBytes(memoryTotal * 1024 * 1024 * 1024)}
+            </div>
+          </div>
+        );
+      },
+    }),
+
+    columnHelper.accessor('temperature', {
+      header: ({ column }) => (
+        <Button
+          variant="ghost"
+          onClick={() => column.toggleSorting(column.getIsSorted() === 'asc')}
+          className="h-auto p-0 font-semibold"
+        >
+          温度
+          <ArrowUpDown className="ml-2 h-4 w-4" />
+        </Button>
+      ),
+      cell: ({ row }) => {
+        const temperature = row.getValue('temperature') as number;
+        return (
+          <span className={cn("font-mono", getTemperatureColor(temperature))}>
+            {formatTemperature(temperature)}
+          </span>
         );
       },
     }),

@@ -11,19 +11,19 @@ import (
 	"k8s-gpu-monitoring/internal/prometheus"
 )
 
-// GPUHandler handles GPU-related HTTP requests
+// GPUHandler handles GPU-related HTTP requests with Prometheus backend.
 type GPUHandler struct {
 	promClient *prometheus.Client
 }
 
-// NewGPUHandler creates a new GPU handler
+// NewGPUHandler creates a new GPU handler with the provided Prometheus client.
 func NewGPUHandler(promClient *prometheus.Client) *GPUHandler {
 	return &GPUHandler{
 		promClient: promClient,
 	}
 }
 
-// writeJSONResponse writes a JSON response with proper headers
+// writeJSONResponse writes a JSON response with proper headers.
 func (h *GPUHandler) writeJSONResponse(w http.ResponseWriter, statusCode int, data interface{}) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(statusCode)
@@ -35,7 +35,7 @@ func (h *GPUHandler) writeJSONResponse(w http.ResponseWriter, statusCode int, da
 	}
 }
 
-// writeErrorResponse writes an error response
+// writeErrorResponse writes a standardized error response.
 func (h *GPUHandler) writeErrorResponse(w http.ResponseWriter, statusCode int, message string) {
 	response := models.APIResponse{
 		Success: false,
@@ -44,7 +44,7 @@ func (h *GPUHandler) writeErrorResponse(w http.ResponseWriter, statusCode int, m
 	h.writeJSONResponse(w, statusCode, response)
 }
 
-// GetGPUMetrics handles GET /api/v1/gpu/metrics
+// GetGPUMetrics handles GET /api/v1/gpu/metrics - returns comprehensive GPU metrics.
 func (h *GPUHandler) GetGPUMetrics(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
 	defer cancel()
@@ -65,7 +65,7 @@ func (h *GPUHandler) GetGPUMetrics(w http.ResponseWriter, r *http.Request) {
 	h.writeJSONResponse(w, http.StatusOK, response)
 }
 
-// GetGPUNodes handles GET /api/v1/gpu/nodes
+// GetGPUNodes handles GET /api/v1/gpu/nodes - returns GPU-enabled nodes.
 func (h *GPUHandler) GetGPUNodes(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
 	defer cancel()
@@ -86,13 +86,13 @@ func (h *GPUHandler) GetGPUNodes(w http.ResponseWriter, r *http.Request) {
 	h.writeJSONResponse(w, http.StatusOK, response)
 }
 
-// GetGPUUtilization handles GET /api/v1/gpu/utilization
+// GetGPUUtilization handles GET /api/v1/gpu/utilization - returns simplified utilization data.
 func (h *GPUHandler) GetGPUUtilization(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
 	defer cancel()
 
-	// 利用率のみを取得するクエリ
-	query := `nvidia_smi_utilization_gpu_ratio * 100`
+	// Query for GPU utilization using kube-prometheus-stack metric names
+	query := `nvidia_gpu_utilization_percent`
 
 	resp, err := h.promClient.Query(ctx, query)
 	if err != nil {
@@ -101,7 +101,7 @@ func (h *GPUHandler) GetGPUUtilization(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// レスポンスを簡素化
+	// Simplify response structure for lightweight API usage
 	var utilization []map[string]interface{}
 	for _, result := range resp.Data.Result {
 		if len(result.Value) >= 2 {
@@ -124,9 +124,9 @@ func (h *GPUHandler) GetGPUUtilization(w http.ResponseWriter, r *http.Request) {
 	h.writeJSONResponse(w, http.StatusOK, response)
 }
 
-// HealthCheck handles GET /api/health
+// HealthCheck handles GET /api/health - verifies service and Prometheus connectivity.
 func (h *GPUHandler) HealthCheck(w http.ResponseWriter, r *http.Request) {
-	// Prometheusサーバーの接続性をチェック
+	// Verify Prometheus server connectivity
 	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
 	defer cancel()
 

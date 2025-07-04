@@ -14,13 +14,13 @@ import (
 	"k8s-gpu-monitoring/internal/models"
 )
 
-// Client represents Prometheus client
+// Client represents a Prometheus HTTP API client.
 type Client struct {
 	baseURL    string
 	httpClient *http.Client
 }
 
-// PrometheusResponse represents Prometheus API response
+// PrometheusResponse represents the response structure from Prometheus API.
 type PrometheusResponse struct {
 	Status string `json:"status"`
 	Data   struct {
@@ -34,7 +34,7 @@ type PrometheusResponse struct {
 	ErrorType string `json:"errorType,omitempty"`
 }
 
-// NewClient creates a new Prometheus client
+// NewClient creates a new Prometheus client.
 func NewClient(baseURL string) *Client {
 	return &Client{
 		baseURL: strings.TrimSuffix(baseURL, "/"),
@@ -44,7 +44,7 @@ func NewClient(baseURL string) *Client {
 	}
 }
 
-// Query executes a PromQL query
+// Query executes a PromQL query.
 func (c *Client) Query(ctx context.Context, query string) (*PrometheusResponse, error) {
 	queryURL := fmt.Sprintf("%s/api/v1/query", c.baseURL)
 
@@ -84,23 +84,22 @@ func (c *Client) Query(ctx context.Context, query string) (*PrometheusResponse, 
 	return &promResp, nil
 }
 
-// GetGPUMetrics retrieves GPU metrics from Prometheus
+// GetGPUMetrics retrieves GPU metrics from Prometheus with concurrent queries.
 func (c *Client) GetGPUMetrics(ctx context.Context) ([]models.GPUMetrics, error) {
-	// クエリ群を並行実行
+	// Execute multiple queries concurrently
 	queries := map[string]string{
-		"utilization":  `nvidia_smi_utilization_gpu_ratio`,
-		"memory_used":  `nvidia_smi_memory_used_bytes`,
-		"memory_total": `nvidia_smi_memory_total_bytes`,
-		"temperature":  `nvidia_smi_temperature_gpu_celsius`,
-		"power_draw":   `nvidia_smi_power_draw_watts`,
-		"power_limit":  `nvidia_smi_enforced_power_limit_watts`,
-		"gpu_name":     `nvidia_smi_gpu_info`,
+		"utilization":        `nvidia_gpu_utilization_percent`,
+		"memory_used":        `nvidia_gpu_used_memory_bytes`,
+		"memory_total":       `nvidia_gpu_total_memory_bytes`,
+		"memory_free":        `nvidia_gpu_free_memory_bytes`,
+		"memory_utilization": `nvidia_gpu_memory_utilization_percent`,
+		"temperature":        `nvidia_gpu_temperature_celsius`,
 	}
 
 	results := make(map[string]*PrometheusResponse)
 	errors := make(chan error, len(queries))
 
-	// 並行してクエリを実行
+	// Execute queries concurrently
 	for name, query := range queries {
 		go func(name, query string) {
 			resp, err := c.Query(ctx, query)
@@ -113,7 +112,7 @@ func (c *Client) GetGPUMetrics(ctx context.Context) ([]models.GPUMetrics, error)
 		}(name, query)
 	}
 
-	// すべてのクエリの完了を待機
+	// Wait for all queries to complete
 	for i := 0; i < len(queries); i++ {
 		if err := <-errors; err != nil {
 			return nil, err
@@ -123,9 +122,9 @@ func (c *Client) GetGPUMetrics(ctx context.Context) ([]models.GPUMetrics, error)
 	return c.parseGPUMetrics(results)
 }
 
-// parseGPUMetrics parses Prometheus response into GPUMetrics
+// parseGPUMetrics parses Prometheus response into GPUMetrics.
 func (c *Client) parseGPUMetrics(results map[string]*PrometheusResponse) ([]models.GPUMetrics, error) {
-	// メトリクスをノード・GPU単位でグループ化
+	// Group metrics by node and GPU index
 	metricsMap := make(map[string]*models.GPUMetrics) // key: "node_name:gpu_index"
 
 	for metricType, response := range results {
@@ -148,7 +147,7 @@ func (c *Client) parseGPUMetrics(results map[string]*PrometheusResponse) ([]mode
 				}
 			}
 
-			// 値を取得してパース
+			// Parse and extract value
 			if len(result.Value) >= 2 {
 				valueStr, ok := result.Value[1].(string)
 				if !ok {
@@ -160,37 +159,26 @@ func (c *Client) parseGPUMetrics(results map[string]*PrometheusResponse) ([]mode
 					continue
 				}
 
-				// メトリクスタイプに応じて値を設定
+				// Set value based on metric type
 				switch metricType {
 				case "utilization":
-					metricsMap[key].Utilization = value * 100 // 0-1 を 0-100% に変換
+					metricsMap[key].Utilization = value // Already in percentage format
 				case "memory_used":
 					metricsMap[key].MemoryUsed = value / (1024 * 1024 * 1024) // bytes to GB
 				case "memory_total":
 					metricsMap[key].MemoryTotal = value / (1024 * 1024 * 1024) // bytes to GB
+				case "memory_free":
+					metricsMap[key].MemoryFree = value / (1024 * 1024 * 1024) // bytes to GB
+				case "memory_utilization":
+					metricsMap[key].MemoryUtilization = value // Already in percentage format
 				case "temperature":
 					metricsMap[key].Temperature = value
-				case "power_draw":
-					metricsMap[key].PowerDraw = value
-				case "power_limit":
-					metricsMap[key].PowerLimit = value
-				case "gpu_name":
-					if gpuName, exists := result.Metric["name"]; exists {
-						metricsMap[key].GPUName = gpuName
-					}
 				}
 			}
 		}
 	}
 
-	// メモリ使用率を計算
-	for _, metrics := range metricsMap {
-		if metrics.MemoryTotal > 0 {
-			metrics.MemoryUtilization = (metrics.MemoryUsed / metrics.MemoryTotal) * 100
-		}
-	}
-
-	// スライスに変換
+	// Convert to slice
 	var gpuMetrics []models.GPUMetrics
 	for _, metrics := range metricsMap {
 		gpuMetrics = append(gpuMetrics, *metrics)
@@ -199,9 +187,9 @@ func (c *Client) parseGPUMetrics(results map[string]*PrometheusResponse) ([]mode
 	return gpuMetrics, nil
 }
 
-// GetGPUNodes retrieves GPU node information
+// GetGPUNodes retrieves GPU node information.
 func (c *Client) GetGPUNodes(ctx context.Context) ([]models.GPUNode, error) {
-	query := `group by (node) (nvidia_smi_gpu_info)`
+	query := `group by (node) (nvidia_gpu_utilization_percent)`
 
 	resp, err := c.Query(ctx, query)
 	if err != nil {
@@ -224,8 +212,8 @@ func (c *Client) GetGPUNodes(ctx context.Context) ([]models.GPUNode, error) {
 			}
 		}
 
-		// GPU数を取得するための別クエリ
-		countQuery := fmt.Sprintf(`count by (node) (nvidia_smi_gpu_info{node="%s"})`, nodeName)
+		// Separate query to get GPU count
+		countQuery := fmt.Sprintf(`count by (node) (nvidia_gpu_utilization_percent{node="%s"})`, nodeName)
 		countResp, err := c.Query(ctx, countQuery)
 		if err == nil && len(countResp.Data.Result) > 0 && len(countResp.Data.Result[0].Value) >= 2 {
 			if countStr, ok := countResp.Data.Result[0].Value[1].(string); ok {
