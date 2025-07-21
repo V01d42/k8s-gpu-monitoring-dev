@@ -129,8 +129,9 @@ func (c *Client) parseGPUMetrics(results map[string]*PrometheusResponse) ([]mode
 
 	for metricType, response := range results {
 		for _, result := range response.Data.Result {
-			nodeName := result.Metric["node"]
-			gpuIndex := result.Metric["gpu"]
+			nodeName := result.Metric["hostname"]
+			gpuIndex := result.Metric["gpu_id"]
+			gpuName := result.Metric["gpu_name"]
 
 			if nodeName == "" || gpuIndex == "" {
 				continue
@@ -143,6 +144,7 @@ func (c *Client) parseGPUMetrics(results map[string]*PrometheusResponse) ([]mode
 				metricsMap[key] = &models.GPUMetrics{
 					NodeName:  nodeName,
 					GPUIndex:  idx,
+					GPUName:   gpuName,
 					Timestamp: time.Now(),
 				}
 			}
@@ -189,7 +191,7 @@ func (c *Client) parseGPUMetrics(results map[string]*PrometheusResponse) ([]mode
 
 // GetGPUNodes retrieves GPU node information.
 func (c *Client) GetGPUNodes(ctx context.Context) ([]models.GPUNode, error) {
-	query := `group by (node) (nvidia_gpu_utilization_percent)`
+	query := `group by (hostname, gpu_name) (nvidia_gpu_utilization_percent)`
 
 	resp, err := c.Query(ctx, query)
 	if err != nil {
@@ -200,7 +202,8 @@ func (c *Client) GetGPUNodes(ctx context.Context) ([]models.GPUNode, error) {
 	nodeMap := make(map[string]*models.GPUNode)
 
 	for _, result := range resp.Data.Result {
-		nodeName := result.Metric["node"]
+		nodeName := result.Metric["hostname"]
+		gpuName := result.Metric["gpu_name"]
 		if nodeName == "" {
 			continue
 		}
@@ -212,8 +215,22 @@ func (c *Client) GetGPUNodes(ctx context.Context) ([]models.GPUNode, error) {
 			}
 		}
 
+		// Add GPU model if not already present
+		if gpuName != "" {
+			found := false
+			for _, existingModel := range nodeMap[nodeName].GPUModels {
+				if existingModel == gpuName {
+					found = true
+					break
+				}
+			}
+			if !found {
+				nodeMap[nodeName].GPUModels = append(nodeMap[nodeName].GPUModels, gpuName)
+			}
+		}
+
 		// Separate query to get GPU count
-		countQuery := fmt.Sprintf(`count by (node) (nvidia_gpu_utilization_percent{node="%s"})`, nodeName)
+		countQuery := fmt.Sprintf(`count by (hostname) (nvidia_gpu_utilization_percent{hostname="%s"})`, nodeName)
 		countResp, err := c.Query(ctx, countQuery)
 		if err == nil && len(countResp.Data.Result) > 0 && len(countResp.Data.Result[0].Value) >= 2 {
 			if countStr, ok := countResp.Data.Result[0].Value[1].(string); ok {

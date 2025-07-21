@@ -106,8 +106,8 @@ func (h *GPUHandler) GetGPUUtilization(w http.ResponseWriter, r *http.Request) {
 	for _, result := range resp.Data.Result {
 		if len(result.Value) >= 2 {
 			util := map[string]interface{}{
-				"node":        result.Metric["node"],
-				"gpu_index":   result.Metric["gpu"],
+				"node":        result.Metric["hostname"],
+				"gpu_index":   result.Metric["gpu_id"],
 				"utilization": result.Value[1],
 				"timestamp":   result.Value[0],
 			}
