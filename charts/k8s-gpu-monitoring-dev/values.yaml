@@ -63,12 +63,15 @@ backend:
     timeoutSeconds: 3
     failureThreshold: 3
   
-  # Security context
+  # Pod security context (for spec.template.spec.securityContext)
   securityContext:
     runAsNonRoot: true
     runAsUser: 1001
     runAsGroup: 1001
     fsGroup: 1001
+  
+  # Container security context (for spec.template.spec.containers[].securityContext)
+  containerSecurityContext:
     capabilities:
       drop:
         - ALL
@@ -138,12 +141,15 @@ frontend:
     timeoutSeconds: 3
     failureThreshold: 3
   
-  # Security context
+  # Pod security context (for spec.template.spec.securityContext)
   securityContext:
     runAsNonRoot: true
     runAsUser: 101
     runAsGroup: 101
     fsGroup: 101
+  
+  # Container security context (for spec.template.spec.containers[].securityContext)
+  containerSecurityContext:
     capabilities:
       drop:
         - ALL
